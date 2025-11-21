@@ -1,0 +1,76 @@
+server:
+  port: 8084
+  forward-headers-strategy: framework
+
+  cloud:
+    loadbalancer:
+      retry:
+        enabled: true
+        max-retries-on-same-service-instance: 1
+        max-retries-on-next-service-instance: 2
+      health-check:
+        initial-delay: 0s
+        interval: 10s
+      cache:
+        enabled: false  # Disable caching for macOS
+
+spring:
+  application:
+    name: NOTIFICATION-SERVICE
+  data:
+    mongodb:
+      uri: mongodb://admin:password123@localhost:27017/social_media_messages?authSource=admin
+      auto-index-creation: true
+  
+  # Email configuration (using Gmail as example)
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: vishal2k21ml@gmail.com
+    password: ijws bqqm glvs ajqx # Generate from Google Account settings
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          ssl:
+            trust: smtp.gmail.com
+    default-encoding: UTF-8
+  
+  # Kafka configuration
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: notification-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: false  # ← KEY: Use hostname not IP
+    hostname: localhost       # ← Explicit hostname
+    instance-id: ${spring.application.name}:${server.port}
+app:
+  name: Social Media Platform
+  frontend-url: http://localhost:3000
+
+firebase:
+  enabled: false  # Set to true when you have mobile app
+  config-file: firebase-service-account.json
+
+logging:
+  level:
+    com.notification_service: DEBUG
+
+jwt:
+  secret: bXlTZWNyZXRLZXlGb3JKV1RTaG91bGRCZVZlcnlMb25nQW5kU2VjdXJlMTIzNDU2Nzg5MA==
+
+internal:
+      api-key: ${INTERNAL_API_KEY:your-secret-internal-key-here}

@@ -1,0 +1,90 @@
+server:
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 10MB
+      file-size-threshold: 2KB
+      location: ${java.io.tmpdir}
+  port: 8083
+  tomcat:
+    connection-timeout: 20000
+    max-connections: 10000
+    threads:
+      max: 200
+      min-spare: 10
+    accept-count: 100
+
+spring:
+  application:
+    name: MESSAGE-SERVICE
+  data:
+    mongodb:
+      uri: mongodb://admin:password123@localhost:27017/social_media_messages?authSource=admin
+      auto-index-creation: true
+
+jwt:
+  secret: bXlTZWNyZXRLZXlGb3JKV1RTaG91bGRCZVZlcnlMb25nQW5kU2VjdXJlMTIzNDU2Nzg5MA==
+  expiration: 86400000
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+    registry-fetch-interval-seconds: 5
+  instance:
+    hostname: localhost
+    prefer-ip-address: false
+    instance-id: ${spring.application.name}:${server.port}
+    lease-renewal-interval-in-seconds: 5
+    lease-expiration-duration-in-seconds: 10
+    metadata-map:
+      management:
+        port: ${server.port}
+
+# Feign Configuration
+feign:
+  httpclient:
+    enabled: true
+    max-connections: 200
+    max-connections-per-route: 50
+    connection-timeout: 30000
+  client:
+    config:
+      default:
+        connectTimeout: 30000
+        readTimeout: 30000
+        loggerLevel: FULL
+      USER-SERVICE:
+        connectTimeout: 30000
+        readTimeout: 30000
+        loggerLevel: FULL
+
+websocket:
+  broker:
+    host: localhost
+    port: 61613
+    username: guest
+    password: guest
+
+# Actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    root: INFO
+    com.message_service: DEBUG
+    com.message_service.message_service.client: DEBUG
+    feign: DEBUG
+    org.springframework.cloud: DEBUG
+    com.netflix.discovery: DEBUG
+    com.netflix.loadbalancer: DEBUG

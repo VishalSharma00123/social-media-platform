@@ -1,0 +1,9 @@
+# docker-compose.debug.yml
+services:  # <-- This was missing!
+  user-service:
+    ports:
+      - "8081:8081"
+      - "5005:5005"  # Debug port
+    environment:
+      # Override JAVA_OPTS to include debug agent
+      JAVA_OPTS: "-Xms512m -Xmx1g -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"

@@ -1,0 +1,414 @@
+services:
+  # ============================================
+  # INFRASTRUCTURE SERVICES
+  # ============================================
+
+  # MongoDB - Primary Database
+  mongodb:
+    image: mongo:7.0
+    container_name: social-media-mongodb
+    hostname: mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - social-media-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: social-media-mongo-express
+    restart: unless-stopped
+    ports:
+      - "8087:8081"
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongodb
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: password123
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: admin123
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - social-media-network
+  # Redis - Caching & Rate Limiting
+  redis:
+    image: redis:7.2-alpine
+    container_name: social-media-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass RedisPassword123!
+    volumes:
+      - redis_data:/data
+    networks:
+      - social-media-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kafka - Event Streaming
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: social-media-zookeeper
+    restart: unless-stopped
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SYNC_LIMIT: 2
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    networks:
+      - social-media-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: social-media-kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    depends_on:
+      - zookeeper
+    networks:
+      - social-media-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================
+  # MICROSERVICES
+  # ============================================
+
+  # 1. Eureka Server - Service Discovery
+  eureka-server:
+    build:
+      context: ./services/eureka-server
+      dockerfile: Dockerfile
+    container_name: eureka-server
+    restart: unless-stopped
+    ports:
+      - "8761:8761"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      JAVA_OPTS: "-Xms256m -Xmx512m"
+    networks:
+      - social-media-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 2. API Gateway
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      SPRING_REDIS_PASSWORD: RedisPassword123!
+      JWT_SECRET: ${JWT_SECRET:-mySecretKeyForJWTShouldBeVeryLongAndSecure12345}
+      JAVA_OPTS: "-Xms256m -Xmx512m"
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - social-media-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # 3. User Service
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile
+    container_name: user-service
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_DATA_MONGODB_URI: mongodb://admin:SecurePassword123!@mongodb:27017/social_media_users?authSource=admin
+      JWT_SECRET: ${JWT_SECRET:-mySecretKeyForJWTShouldBeVeryLongAndSecure12345}
+      JWT_EXPIRATION: 86400000
+      FILE_UPLOAD_DIR: /app/uploads
+      FILE_BASE_URL: http://localhost:8081/files
+      JAVA_OPTS: "-Xms512m -Xmx1g"
+    volumes:
+      - user_uploads:/app/uploads
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - social-media-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # 4. Post Service
+  post-service:
+    build:
+      context: ./services/post-service
+      dockerfile: Dockerfile
+    container_name: post-service
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_DATA_MONGODB_URI: mongodb://admin:SecurePassword123!@mongodb:27017/social_media_posts?authSource=admin
+      JWT_SECRET: ${JWT_SECRET:-mySecretKeyForJWTShouldBeVeryLongAndSecure12345}
+      FILE_UPLOAD_DIR: /app/uploads
+      FILE_BASE_URL: http://localhost:8082/files
+      JAVA_OPTS: "-Xms512m -Xmx1g"
+    volumes:
+      - post_uploads:/app/uploads
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    networks:
+      - social-media-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # 5. Message Service - Real-time Chat
+  message-service:
+    build:
+      context: ./services/message-service
+      dockerfile: Dockerfile
+    container_name: message-service
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_DATA_MONGODB_URI: mongodb://admin:SecurePassword123!@mongodb:27017/social_media_messages?authSource=admin
+      JWT_SECRET: ${JWT_SECRET:-mySecretKeyForJWTShouldBeVeryLongAndSecure12345}
+      JAVA_OPTS: "-Xms512m -Xmx1g"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    networks:
+      - social-media-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # 6. Notification Service
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: notification-service
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_DATA_MONGODB_URI: mongodb://admin:SecurePassword123!@mongodb:27017/social_media_notifications?authSource=admin
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_MAIL_HOST: smtp.gmail.com
+      SPRING_MAIL_PORT: 587
+      SPRING_MAIL_USERNAME: ${EMAIL_USERNAME:-your-email@gmail.com}
+      SPRING_MAIL_PASSWORD: ${EMAIL_PASSWORD:-your-app-password}
+      FIREBASE_CONFIG_FILE: /app/config/firebase-service-account.json
+      JAVA_OPTS: "-Xms256m -Xmx512m"
+    volumes:
+      - ./services/notification-service/config:/app/config:ro
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - social-media-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # 7. Admin Service
+  admin-service:
+    build:
+      context: ./services/admin-service
+      dockerfile: Dockerfile
+    container_name: admin-service
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_DATA_MONGODB_URI: mongodb://admin:SecurePassword123!@mongodb:27017/social_media_admin?authSource=admin
+      JWT_SECRET: ${JWT_SECRET:-mySecretKeyForJWTShouldBeVeryLongAndSecure12345}
+      JAVA_OPTS: "-Xms256m -Xmx512m"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      post-service:
+        condition: service_healthy
+    networks:
+      - social-media-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================
+  # MONITORING & LOGGING
+  # ============================================
+
+  # Prometheus - Metrics Collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: social-media-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - social-media-network
+
+  # Grafana - Metrics Visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: social-media-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: http://localhost:3001
+      GF_INSTALL_PLUGINS: grafana-clock-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - social-media-network
+
+# ============================================
+# NETWORKS
+# ============================================
+networks:
+  social-media-network:
+    driver: bridge
+    name: social-media-network
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# ============================================
+# VOLUMES
+# ============================================
+volumes:
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local
+  redis_data:
+    driver: local
+  zookeeper_data:
+    driver: local
+  zookeeper_logs:
+    driver: local
+  kafka_data:
+    driver: local
+  user_uploads:
+    driver: local
+  post_uploads:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local

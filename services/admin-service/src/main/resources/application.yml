@@ -1,0 +1,29 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: admin-service
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/social_media_admin
+      auto-index-creation: true
+
+  cache:
+    type: simple
+    cache-names: dashboardStats
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+
+jwt:
+  secret: myAdminSecretKeyForJWTShouldBeVeryLongAndSecure12345
+  expiration: 86400000 # 1 day
+
+logging:
+  level:
+    com.admin_service: DEBUG

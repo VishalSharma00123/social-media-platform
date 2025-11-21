@@ -1,0 +1,16 @@
+server:
+  port: 8761
+
+eureka:
+  client:
+    register-with-eureka: false
+    fetch-registry: false
+  instance:
+    prefer-ip-address: false  # ← Change from true to false
+    hostname: localhost       # ← Add this
+    instance-id: ${spring.application.name}:${server.port}  # ← Add this
+
+
+spring:
+  application:
+    name: eureka-server
