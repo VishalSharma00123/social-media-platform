@@ -2,6 +2,8 @@ package com.user_service.user_service.service;
 
 import com.user_service.user_service.client.NotificationClient;
 import com.user_service.user_service.dto.*;
+import com.user_service.user_service.event.UserEvent;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import com.user_service.user_service.Model.User;
 import com.user_service.user_service.Respository.UserRepository;
@@ -20,16 +22,19 @@ public class UserService {
     private final JwtService jwtService;
     private final FileStorageService fileStorageService;
     private final NotificationClient notificationClient;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private static final String EVENT_TOPIC = "user-events";
 
     public UserService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        JwtService jwtService,
-                       FileStorageService fileStorageService, NotificationClient notificationClient) {
+                       FileStorageService fileStorageService, NotificationClient notificationClient, KafkaTemplate<String, Object> kafkaTemplate) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.fileStorageService = fileStorageService;
         this.notificationClient = notificationClient;
+        this.kafkaTemplate = kafkaTemplate;
     }
 
     // ✅ ADD THESE NEW METHODS FOR MESSAGE SERVICE
@@ -138,14 +143,14 @@ public class UserService {
             System.out.println("╚════════════════════════════════════╝\n");
 
 
-            NotificationRequest notificationRequest = new NotificationRequest();
-            notificationRequest.setUserId(savedUser.getId());
-            notificationRequest.setSenderId(savedUser.getId());
-            notificationRequest.setType("REGISTRATION");
-            notificationRequest.setTitle("Welcome " + savedUser.getUsername() + "!");
-            notificationRequest.setMessage("Your account has been created successfully.");
-            notificationRequest.setTargetId(savedUser.getId());
-            notificationClient.createNotification(notificationRequest);
+            UserEvent user1 = new UserEvent();
+
+            user1.setType("REGISTRATION");
+            user1.setUserId(user.getId());
+            user1.setUsername(user.getUsername());
+
+            kafkaTemplate.send(EVENT_TOPIC, user1);
+
 
             return new AuthResponse.Builder()
                     .token(token)
@@ -167,7 +172,7 @@ public class UserService {
     }
 
     public AuthResponse login(LoginRequest request) {
-        User user = userRepository.findByUsername(request.getUsername())
+            User user = userRepository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
@@ -180,14 +185,13 @@ public class UserService {
         String token = jwtService.generateToken(user.getId(), user.getUsername());
 
         // Inside login() method, after user is authenticated:
-        NotificationRequest notificationRequest = new NotificationRequest();
-        notificationRequest.setUserId(user.getId());
-        notificationRequest.setSenderId(user.getId());
-        notificationRequest.setType("LOGIN");
-        notificationRequest.setTitle("Login Successful");
-        notificationRequest.setMessage("You have logged in at " + LocalDateTime.now());
-        notificationRequest.setTargetId(user.getId());
-        notificationClient.createNotification(notificationRequest);
+       UserEvent user1 = new UserEvent();
+       user1.setType("LOGIN");
+       user1.setUserId(user.getId());
+       user1.setUsername(user.getUsername());
+
+       kafkaTemplate.send(EVENT_TOPIC, user1);
+
 
 
         return new AuthResponse.Builder()
@@ -235,16 +239,14 @@ public class UserService {
         userRepository.save(currentUser);
         userRepository.save(targetUser);
 
-        // Create notification request
-        NotificationRequest notificationRequest = new NotificationRequest();
-        notificationRequest.setUserId(targetUserId);  // follower is the recipient
-        notificationRequest.setSenderId(currentUserId);
-        notificationRequest.setType("FOLLOW");
-        notificationRequest.setTitle(currentUser.getUsername() + " started following you");
-        notificationRequest.setMessage(currentUser.getUsername() + " is now following you.");
-        notificationRequest.setTargetId(currentUserId);
+        UserEvent event = new UserEvent();
+        event.setType("FOLLOW");
+        event.setUserId(currentUserId);
+        event.setUsername(currentUser.getUsername());
+        event.setTargetUserId(targetUserId);
 
-        notificationClient.createNotification(notificationRequest);
+        kafkaTemplate.send(EVENT_TOPIC, event);
+
     }
 
     public void unfollowUser(String currentUserId, String targetUserId) {
@@ -271,15 +273,6 @@ public class UserService {
 
         User savedUser = userRepository.save(user);
 
-        // Inside uploadProfilePicture() method, after save:
-        NotificationRequest notificationRequest = new NotificationRequest();
-        notificationRequest.setUserId(user.getId());
-        notificationRequest.setSenderId(user.getId());
-        notificationRequest.setType("PICTURE_UPLOAD");
-        notificationRequest.setTitle("Profile Picture Changed");
-        notificationRequest.setMessage("You have changed your profile picture.");
-        notificationRequest.setTargetId(user.getId());
-        notificationClient.createNotification(notificationRequest);
 
         return getUserProfile(savedUser.getUsername());
     }

@@ -18,9 +18,11 @@ public class NotificationSettings {
     // Email notifications
     private boolean emailOnFollow = true;
     private boolean emailOnComment = true;
-    private boolean emailOnLike = false;
+    private boolean emailOnLike = true;
     private boolean emailOnMention = true;
     private boolean emailOnMessage = true;
+    private boolean emailOnLogin = true;
+    private boolean emailOnRegitration = true;
 
     // Push notifications
     private boolean pushOnFollow = true;
@@ -28,6 +30,8 @@ public class NotificationSettings {
     private boolean pushOnLike = true;
     private boolean pushOnMention = true;
     private boolean pushOnMessage = true;
+    private boolean pushOnLogin = true;
+    private boolean pushOnRegistration = true;
 
     // In-app notifications
     private boolean inAppOnFollow = true;
@@ -35,6 +39,8 @@ public class NotificationSettings {
     private boolean inAppOnLike = true;
     private boolean inAppOnMention = true;
     private boolean inAppOnMessage = true;
+    private boolean isAppOnLogin = true;
+    private boolean isAppOnRegistration = true;
 
     private String fcmToken; // Firebase Cloud Messaging token
 

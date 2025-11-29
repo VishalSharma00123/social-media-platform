@@ -2,10 +2,7 @@ package com.notification_service.notification_service.service;
 
 // NotificationService.java
 import com.notification_service.notification_service.client.UserServiceClient;
-import com.notification_service.notification_service.dto.NotificationRequest;
-import com.notification_service.notification_service.dto.NotificationResponse;
-import com.notification_service.notification_service.dto.NotificationSettingsDTO;
-import com.notification_service.notification_service.dto.UserDTO;
+import com.notification_service.notification_service.dto.*;
 import com.notification_service.notification_service.model.Notification;
 import com.notification_service.notification_service.model.NotificationSettings;
 import com.notification_service.notification_service.repository.NotificationRepository;
@@ -84,6 +81,86 @@ public class NotificationService {
         return mapToResponse(saved);
         }
 
+    public NotificationResponse createRegistrationNotification(RegistrationNotificationRequest request) {
+        // Get user settings
+        NotificationSettings settings = getOrCreateSettings(request.getUserId());
+
+        // Create notification
+        Notification notification = new Notification();
+        notification.setUserId(request.getUserId());
+        notification.setType(Notification.NotificationType.valueOf(request.getType()));
+        notification.setTitle(request.getTitle());
+        notification.setMessage(request.getMessage());
+        notification.setMetadata(request.getMetadata());
+        notification.setCreatedAt(LocalDateTime.now());
+
+        Notification saved = notificationRepository.save(notification);
+
+        // Send notifications based on settings
+        if (shouldSendInApp(settings, notification.getType())) {
+            sendInAppNotification(saved);
+        }
+
+        if (shouldSendPush(settings, notification.getType()) && settings.getFcmToken() != null) {
+            pushNotificationService.sendPushNotification(saved, settings.getFcmToken());
+            saved.setPushSent(true);
+        }
+
+        if (shouldSendEmail(settings, notification.getType())) {
+            UserDTO user = userServiceClient.getUserById(request.getUserId());
+            emailService.sendNotificationEmail(saved, user.getEmail());
+            saved.setEmailSent(true);
+        }
+
+        notificationRepository.save(saved);
+
+        return mapToResponse(saved);
+    }
+
+
+
+
+    public NotificationResponse createLoginNotification(LoginNotificationRequest request) {
+        // Get user settings
+        NotificationSettings settings = getOrCreateSettings(request.getUserId());
+
+
+
+
+        // Create notification
+        Notification notification = new Notification();
+        notification.setUserId(request.getUserId());
+        notification.setType(Notification.NotificationType.valueOf(request.getType()));
+        notification.setTitle(request.getTitle());
+        notification.setMessage(request.getMessage());
+        notification.setMetadata(request.getMetadata());
+        notification.setCreatedAt(LocalDateTime.now());
+
+        Notification saved = notificationRepository.save(notification);
+
+        // Send notifications based on settings
+        if (shouldSendInApp(settings, notification.getType())) {
+            sendInAppNotification(saved);
+        }
+
+        if (shouldSendPush(settings, notification.getType()) && settings.getFcmToken() != null) {
+            pushNotificationService.sendPushNotification(saved, settings.getFcmToken());
+            saved.setPushSent(true);
+        }
+
+        if (shouldSendEmail(settings, notification.getType())) {
+            UserDTO user = userServiceClient.getUserById(request.getUserId());
+            emailService.sendNotificationEmail(saved, user.getEmail());
+            saved.setEmailSent(true);
+        }
+
+        notificationRepository.save(saved);
+
+
+
+        return mapToResponse(saved);
+    }
+
 
 
     public Page<NotificationResponse> getUserNotifications(String userId, boolean unreadOnly, Pageable pageable) {
@@ -132,6 +209,7 @@ public class NotificationService {
         // Update settings
         settings.setEmailOnFollow(dto.isEmailOnFollow());
         settings.setEmailOnComment(dto.isEmailOnComment());
+        settings.setEmailOnLogin(dto.isPushOnLogin());
         settings.setEmailOnLike(dto.isEmailOnLike());
         settings.setEmailOnMention(dto.isEmailOnMention());
         settings.setEmailOnMessage(dto.isEmailOnMessage());
@@ -197,10 +275,13 @@ public class NotificationService {
     private boolean shouldSendEmail(NotificationSettings settings, Notification.NotificationType type) {
         switch (type) {
             case FOLLOW: return settings.isEmailOnFollow();
-            case LOGIN: return settings.isEmailOnComment();
-            case REGISTRATION: return settings.isEmailOnLike();
+            case LOGIN: return settings.isEmailOnLogin();
+            case REGISTRATION: return settings.isEmailOnRegitration();
             case PROFILE_UPDATE: return settings.isEmailOnMention();
             case PICTURE_UPLOAD: return settings.isEmailOnMessage();
+            case LIKE_POST: return settings.isInAppOnLike();
+            case COMMENT: return settings.isInAppOnComment();
+            case MESSAGE: return settings.isInAppOnMessage();
             default: return false;
         }
     }
@@ -208,10 +289,13 @@ public class NotificationService {
     private boolean shouldSendPush(NotificationSettings settings, Notification.NotificationType type) {
         switch (type) {
             case FOLLOW: return settings.isPushOnFollow();
-            case LOGIN: return settings.isPushOnComment();
-            case REGISTRATION: return settings.isPushOnLike();
+            case LOGIN: return settings.isAppOnLogin();
+            case REGISTRATION: return settings.isPushOnRegistration();
             case PROFILE_UPDATE: return settings.isPushOnMention();
             case PICTURE_UPLOAD: return settings.isPushOnMessage();
+            case LIKE_POST: return settings.isInAppOnLike();
+            case COMMENT: return settings.isInAppOnComment();
+            case MESSAGE: return settings.isInAppOnMessage();
             default: return true;
         }
     }
@@ -219,10 +303,13 @@ public class NotificationService {
     private boolean shouldSendInApp(NotificationSettings settings, Notification.NotificationType type) {
         switch (type) {
             case FOLLOW: return settings.isInAppOnFollow();
-            case LOGIN: return settings.isInAppOnComment();
-            case REGISTRATION: return settings.isInAppOnLike();
+            case LOGIN: return settings.isAppOnLogin();
+            case REGISTRATION: return settings.isAppOnRegistration();
             case PROFILE_UPDATE: return settings.isInAppOnMention();
             case PICTURE_UPLOAD: return settings.isInAppOnMessage();
+            case LIKE_POST: return settings.isInAppOnLike();
+            case COMMENT: return settings.isInAppOnComment();
+            case MESSAGE: return settings.isInAppOnMessage();
             default: return true;
         }
     }

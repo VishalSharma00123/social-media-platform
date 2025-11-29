@@ -37,9 +37,12 @@ public class Notification {
 
     public enum NotificationType {
         FOLLOW,
-        LOGIN,            // Add this
-        REGISTRATION,     // Add this
-        PROFILE_UPDATE,   // Add this
-        PICTURE_UPLOAD,   // Add this
-        }
+        LOGIN,
+        REGISTRATION,
+        PROFILE_UPDATE,
+        PICTURE_UPLOAD,
+        LIKE_POST,
+        COMMENT,
+        MESSAGE,
+    }
 }

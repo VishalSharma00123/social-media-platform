@@ -136,7 +136,7 @@ public class PostService {
         Post savedPost = postRepository.save(post);
 
         PostEvent event = new PostEvent();
-        event.setType("POST_COMMENTED");
+        event.setType("COMMENT");
         event.setPostId(postId);
         event.setPostOwnerId(post.getUserId());
         event.setUserId(userId);
