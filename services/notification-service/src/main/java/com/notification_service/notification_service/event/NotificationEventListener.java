@@ -1,6 +1,8 @@
 package com.notification_service.notification_service.event;
 
+import com.notification_service.notification_service.dto.LoginNotificationRequest;
 import com.notification_service.notification_service.dto.NotificationRequest;
+import com.notification_service.notification_service.dto.RegistrationNotificationRequest;
 import com.notification_service.notification_service.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,18 +18,23 @@ public class NotificationEventListener {
 
     private final NotificationService notificationService;
 
-    @KafkaListener(topics = "user-events", groupId = "notification-service")
+    @KafkaListener(topics = "user-events", groupId = "notification-service-v3")
     public void handleUserEvent(UserEvent event) {
         log.info("Received user event: {}", event);
 
         switch (event.getType()) {
-            case "USER_FOLLOWED":
+            case "FOLLOW":
                 createFollowNotification(event);
                 break;
+            case "LOGIN":
+                createLoginNotification(event);
+                break;
+            case "REGISTRATION":
+                createRegistrationNotification(event);
         }
     }
 
-    @KafkaListener(topics = "post-events", groupId = "notification-service")
+    @KafkaListener(topics = "post-events", groupId = "notification-service-v3")
     public void handlePostEvent(PostEvent event) {
         log.info("Received post event: {}", event);
 
@@ -35,13 +42,13 @@ public class NotificationEventListener {
             case "POST_LIKED":
                 createLikeNotification(event);
                 break;
-            case "POST_COMMENTED":
+            case "COMMENT":
                 createCommentNotification(event);
                 break;
         }
     }
 
-    @KafkaListener(topics = "message-events", groupId = "notification-service")
+    @KafkaListener(topics = "message-events", groupId = "notification-service-v3")
     public void handleMessageEvent(MessageEvent event) {
         log.info("Received message event: {}", event);
 
@@ -63,6 +70,28 @@ public class NotificationEventListener {
         notificationService.createNotification(request);
     }
 
+    private void createRegistrationNotification(UserEvent event){
+        RegistrationNotificationRequest request = RegistrationNotificationRequest.builder()
+                .userId(event.getUserId())
+                .type("REGISTRATION")
+                .title("New Registration")
+                .message("A new user has registered")
+                .build();
+
+        notificationService.createRegistrationNotification(request);
+    }
+
+    private void createLoginNotification(UserEvent user){
+        LoginNotificationRequest request = LoginNotificationRequest.builder()
+                .userId(user.getUserId())
+                .type("LOGIN")
+                .title("New Login")
+                .message(user.getUsername()+" has logined ")
+                .build();
+
+        notificationService.createLoginNotification(request);
+
+    }
     private void createLikeNotification(PostEvent event) {
         NotificationRequest request = NotificationRequest.builder()
                 .userId(event.getPostOwnerId())

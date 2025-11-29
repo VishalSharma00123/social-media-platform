@@ -1,4 +1,4 @@
-package com.notification_service.notification_service.event;
+package com.user_service.user_service.event;
 
 import lombok.Data;
 
